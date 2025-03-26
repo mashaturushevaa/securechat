@@ -1,73 +1,78 @@
 const { WebSocketServer, WebSocket } = require('ws');
-const { Client } = require('./Client');
-
+const {Client} = require('./Client');
 class Chatserver {
     wss = null;
     clientsMap = new Map();
 
-    constructor(options) {
+    constructor(options){
         this.port = options.port;
     }
 
-    init() {
-        this.wss = new WebSocketServer({ port: this.port });   
-
-        this.wss.on('connection', (ws) => this.onConnection(ws));
+    init(){
+        this.wss = new WebSocketServer({ port: this.port });
+        this.wss.on('connection', (ws) => this.OnConnection(ws));
         this.wss.on('error', console.error);
+        console.log(`Chatserver started on port ${this.port}`)
+    } 
 
-        console.log(`Chatserver started on port ${this.port}`);
-    }
+    OnConnection(ws){
+        console.log('new connection');  
+        ws.on('message',(data) => this.onMessage(ws, data));
+    }  
 
-    onConnection(ws) {
-        console.log('new connection');
+    onMessage(ws, data){
+        const msObject = JSON.parse(data);
+        console.log(msObject)
 
-        ws.on('message', (data) => this.onMessage(ws, data));
-    }
-
-    onMessage(ws, data) {
-        const msgObject = JSON.parse(data.toString());
-        console.log(msgObject)
-
-        switch (msgObject.type) {
-            case 'message': {
-                this.broadcast(msgObject);
+        switch (msObject.type){
+            case 'message':{
+                this.broadcast(msObject);
                 break;
             }
             case 'options': {
-                this.createClient(ws, msgObject);
+                this.createClient(ws, msObject)
                 break;
             }
             default:
-                console.log('unknown message type');
+                console.log('unknow message type');    
         }
-    }
+    } 
 
-    createClient(ws, msgObject) {
+    createClient(ws, msObject){
+        const ifClientExists = this.clientsMap.get(msObject.sessionId);
+        if (ifClientExists){
+            const client = this.clientsMap.get(msObject.sessionId);
+            client.updateWS(ws);
+            console.log(`Client ${client.username} reconnected`);
+            return;
+        }
+
         const client = new Client({
             ws: ws,
-            username: msgObject.data.username,
-            sessionId: msgObject.sessionId
+            username: msObject.data.username,
+            sessionId: msObject.sessionId
         });
-
-        this.clientsMap.set(client.sessionId, client);
+        this.clientsMap.set(client.sessionId, client)
         console.log(`Client ${client.username} connected`);
     }
 
-    broadcast(msgObject) {
-        const sender = this.clientsMap.get(msgObject.sessionId);
-        console.log(msgObject);
+    broadcast(msObject){
+        const sender = this.clientsMap.get(msObject.sessionId);
         this.clientsMap.forEach((client) => {
-           if(client.ws.readyState === WebSocket.OPEN && client.sessionId !== msgObject.sessionId) {
-               client.send({
-                     type: 'message',
-                     data: {
-                          sender: sender.username,
-                          message: msgObject.data
-                     }
-               });
-           }
+        let isCrypto = msObject.crypto || false;
+        if(isCrypto) {console.log(`Message from ${sender.username}: ${msObject.data}`);}     
+        else {console.log(`Message from ${sender.username}: ${msObject.data}`);}     
+           if (client.ws.readyState === WebSocket.OPEN && client.sessionId !== msObject.sessionId){
+                client.send ({
+                   type: 'message',
+                   data: {
+                        sender: sender.username,
+                        message: msObject.data
+                   } 
+                });
+            }
         });
-    }
+    }                                                                         
 }
 
-module.exports = { Chatserver };
+module.exports = {Chatserver};
